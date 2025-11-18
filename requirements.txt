@@ -1,4 +1,12 @@
-python-dotenv
-langchain-openai
+streamlit
+pandas
+numpy
+matplotlib
+langchain-core
+langchain-community
 langgraph
+langchain-openai
+python-dotenv
 reportlab
+scikit-learn
+seaborn

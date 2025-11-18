@@ -3,15 +3,16 @@
 import streamlit as st
 from src.tools.utils import load_dataset
 from src.pipeline.profiler import profile_dataset
-from src.agents.nlp_intent_parser import parse_chart_request
-from src.tools.chart_generator import generate_chart
+from src.agents.response_generator import handle_user_query
 
 
 def render_main_layout():
     """
-    Renders the main tabbed layout for the EDA Assistant.
-    Currently each tab only shows placeholder content.
-    Logic will be added step by step.
+    Main UI layout with 4 tabs:
+    1️⃣ Upload file + profiling
+    2️⃣ Cleaning and fixes
+    3️⃣ Chat with EDA agent
+    4️⃣ Export report
     """
     st.title("🧠 EDA Assistant")
 
@@ -22,16 +23,12 @@ def render_main_layout():
         "4. Export Report"
     ])
 
-    # Tab 1: Upload & Profiling (placeholder for now)
-    
-
-# inside render_main_layout(), Tab 1 content
-
+    # TAB 1 — Upload & Profiling
     with tabs[0]:
         st.subheader("Step 1: Upload your dataset & run profiling")
 
         uploaded_file = st.file_uploader(
-            "Upload a CSV or Excel file", 
+            "Upload a CSV or Excel file",
             type=["csv", "xlsx", "xls"]
         )
 
@@ -40,46 +37,40 @@ def render_main_layout():
                 df = load_dataset(uploaded_file)
                 st.session_state["raw_dataset"] = df
 
-                st.success("File uploaded and loaded successfully!")
+                st.success("File Uploaded Successfully! 🎉")
 
                 st.write("### 🔍 Data Preview")
                 st.dataframe(df.head())
                 st.write(f"**Rows:** {df.shape[0]} | **Columns:** {df.shape[1]}")
 
-                # ➤ Run Profiling
-                profile_result = profile_dataset(df)
-                st.session_state["profile_result"] = profile_result
+                # Run profiling
+                profile = profile_dataset(df)
+                st.session_state["profile_result"] = profile
 
-                st.write("## 📌 Basic Profiling Results")
-
+                st.write("## 📌 Basic Profiling")
                 st.write("### 🧩 Column Types")
-                st.dataframe(profile_result["column_types"])
+                st.dataframe(profile["column_types"])
 
                 st.write("### ⚠️ Missing Values")
-                st.dataframe(profile_result["missing_values"])
+                st.dataframe(profile["missing_values"])
 
-                st.write("### 📊 Statistics (for numeric columns)")
-                if not profile_result["stats"].empty:
-                    st.dataframe(profile_result["stats"])
+                st.write("### 📊 Stats for Numeric Columns")
+                if not profile["stats"].empty:
+                    st.dataframe(profile["stats"])
                 else:
                     st.info("No numeric columns found.")
 
             except Exception as e:
-                st.error(f"Error loading file: {e}")
-
+                st.error(f"Error: {e}")
         else:
-            st.info("Please upload a file to proceed.")
+            st.info("Upload a file to continue!")
 
-
-
-    # Tab 2: Cleaning & Fixes (placeholder)
-    # Tab 2: Data Cleaning & Fixes
-
+    # TAB 2 — Fix Missing Values
     with tabs[1]:
-        st.subheader("Step 2: Review suggested fixes & clean data")
+        st.subheader("Step 2: Fix Missing Values")
 
         if "raw_dataset" not in st.session_state:
-            st.warning("⚠️ No dataset found. Please upload data in Tab 1.")
+            st.warning("Upload dataset first (Tab 1)")
             st.stop()
 
         df = st.session_state["raw_dataset"]
@@ -89,364 +80,127 @@ def render_main_layout():
         missing_cols = missing_df[missing_df["Missing Count"] > 0].index.tolist()
 
         if not missing_cols:
-            st.success("🎉 No missing data detected. You can move to the next step!")
+            st.success("🎯 No missing data found! Move to next step.")
             st.stop()
 
-        st.write("### ⚠️ Missing Value Columns")
+        st.write("### Missing Columns")
         st.dataframe(missing_df.loc[missing_cols])
 
-        # Suggested strategies
         from src.pipeline.cleaner import suggest_imputation, apply_imputation
-
         suggestions = suggest_imputation(df)
 
-        st.write("### 🧠 Suggested Imputation Methods")
+        st.write("### 🧠 Suggested Fixes")
 
+        # Local dict to collect strategies for this run
         user_strategies = {}
-
-        for col, default_method in suggestions.items():
+        for col, default in suggestions.items():
             user_strategies[col] = st.selectbox(
                 f"Column: {col}",
                 ["Median", "Mean", "Most Frequent", "Drop"],
-                index=["Median", "Mean", "Most Frequent", "Drop"].index(default_method)
+                index=["Median", "Mean", "Most Frequent", "Drop"].index(default)
             )
 
         if st.button("Apply Fixes"):
+            # Apply imputation using chosen strategies
             cleaned_df = apply_imputation(df, user_strategies)
             st.session_state["cleaned_dataset"] = cleaned_df
-            st.success("Data cleaned successfully! Proceed to Step 3.")
-            st.write("### Cleaned Data Preview")
+
+            st.success("Data cleaned! Now go to Step 3")
+
+            st.write("### Cleaned Data")
             st.dataframe(cleaned_df.head())
 
-            # Convert cleaned dataframe to CSV for download
-            csv_data = cleaned_df.to_csv(index=False).encode('utf-8')
-
+            # 🔽 Download cleaned dataset
+            csv_data = cleaned_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 label="⬇️ Download Cleaned Dataset",
                 data=csv_data,
                 file_name="cleaned_dataset.csv",
                 mime="text/csv"
             )
-        # After cleaned data preview
 
-        
-
-
-    # Tab 3: Chat with EDA Agent (placeholder)
-        # Tab 3: Chat with EDA Agent
-
-    from src.agents.llm_client import get_llm
-
+    # TAB 3 — Chat with EDA Agent
     with tabs[2]:
-        st.subheader("Step 3: Chat with the EDA Agent")
+        st.subheader("Step 3: Chat with EDA Agent 🤖")
 
-        if "cleaned_dataset" not in st.session_state:
-            st.warning("⚠️ No cleaned dataset found. Please complete Step 2.")
+        df = st.session_state.get("cleaned_dataset")
+        if df is None:
+            st.warning("⚠️ Complete Step 2 first!")
             st.stop()
-
-        df = st.session_state["cleaned_dataset"]
-
-        from src.agents.nlp_intent_parser import detect_intent, parse_chart_request
-        from src.tools.chart_generator import generate_chart
 
         if "chat_history" not in st.session_state:
-            st.session_state["chat_history"] = []  # Initialize history
+            st.session_state["chat_history"] = []
 
-        # Clear chat input function (callback)
-        def reset_input():
-            st.session_state["chat_input"] = ""
-
-        # Display chat history (text + images)
-        for chat in st.session_state["chat_history"]:
-            if chat["role"] == "user":
-                st.markdown(f"**You:** {chat['message']}")
-            elif chat["role"] == "assistant":
-                st.markdown(f"**Assistant:** {chat['message']}")
-            elif chat["role"] == "chart":
-                st.image(chat["message"])
-
-        # User input box with callback
-        # Input box uses a temporary key
-        user_msg = st.text_input("Ask something about your dataset:")
+        user_msg = st.text_input("Ask about your dataset:", key="chat_input")
 
         if st.button("Send") and user_msg.strip():
-            st.session_state["chat_history"].append({"role": "user", "message": user_msg})
+            # User message
+            st.session_state["chat_history"].append(
+                {"role": "user", "message": user_msg}
+            )
 
-            intent = detect_intent(user_msg)
+            # EDA brain
+            response_text, chart_path = handle_user_query(user_msg)
 
-            if intent == "describe":
-                response = f"This dataset has **{df.shape[0]} rows** and **{df.shape[1]} columns**."
+            # Assistant text response
+            st.session_state["chat_history"].append(
+                {"role": "assistant", "message": response_text}
+            )
 
-            elif intent == "columns":
-                response = "Here are the columns:\n\n" + "\n".join([f"- {col}" for col in df.columns])
-
-            elif intent == "missing":
-                response = "Missing values:\n\n" + df.isnull().sum().to_string()
-
-            elif intent == "stats":
-                response = "Basic statistics:\n\n" + df.describe().transpose().to_string()
-
-            elif intent == "chart":
-                detected_cols, chart_type = parse_chart_request(user_msg, list(df.columns))
-
-                if len(detected_cols) == 0:
-                    response = "Please mention a valid column name for visualization."
-
-                elif len(detected_cols) == 1:
-                    img_path = generate_chart(df, detected_cols[0], chart_type=chart_type)
-                    st.session_state["chat_history"].append({"role": "assistant", "message": f"📊 {chart_type.title()} Chart: **{detected_cols[0]}**"})
-                    st.session_state["chat_history"].append({"role": "chart", "message": img_path})
-                    st.rerun()
-
-                else:
-                    img_path = generate_chart(df, detected_cols[0], detected_cols[1], chart_type="scatter")
-                    st.session_state["chat_history"].append({"role": "assistant", "message": f"📊 Scatter Plot: **{detected_cols[0]} vs {detected_cols[1]}**"})
-                    st.session_state["chat_history"].append({"role": "chart", "message": img_path})
-                    st.rerun()
-
-            else:
-                llm = get_llm()
-
-                system_prompt = (
-                    "You are an intelligent EDA assistant. Only respond based on the dataset context. "
-                    "Be brief and helpful. No code."
+            # Optional chart
+            if chart_path:
+                st.session_state["chat_history"].append(
+                    {"role": "chart", "message": chart_path}
                 )
 
-                dataset_info = (
-                    f"Columns: {list(df.columns)}\n"
-                    f"Rows: {df.shape[0]}\n"
-                )
-
-                conversation = ""
-                for chat in st.session_state["chat_history"][-4:]:
-                    conversation += f"{chat['role']}: {chat['message']}\n"
-
-                prompt = (
-                    f"{system_prompt}\n"
-                    f"Dataset Info:\n{dataset_info}\n"
-                    f"Recent Chat:\n{conversation}\n"
-                    f"User Query: {user_msg}"
-                )
-
-                response = llm.invoke(prompt).content
-
-            st.session_state["chat_history"].append({"role": "assistant", "message": response})
             st.rerun()
 
+        # Chat history display
+        for chat in st.session_state["chat_history"]:
+            if chat["role"] == "user":
+                st.markdown(f"🧑‍💻 **You:** {chat['message']}")
+            elif chat["role"] == "assistant":
+                st.markdown(f"🤖 **EDA Agent:** {chat['message']}")
+            elif chat["role"] == "chart":
+                st.image(chat["message"], caption="📈 Chart")
 
+        if st.button("Clear Chat 🧹"):
+            st.session_state["chat_history"] = []
+            st.rerun()
 
-
-    # from src.agents.llm_client import get_llm
-
-    # with tabs[2]:
-    #     st.subheader("Step 3: Chat with the EDA Agent")
-
-    #     if "cleaned_dataset" not in st.session_state:
-    #         st.warning("⚠️ No cleaned dataset found. Please complete Step 2.")
-    #         st.stop()
-
-    #     df = st.session_state["cleaned_dataset"]
-
-    #     from src.agents.nlp_intent_parser import detect_intent, parse_chart_request
-    #     from src.tools.chart_generator import generate_chart
-
-    #     if "chat_history" not in st.session_state:
-    #         st.session_state["chat_history"] = []  # Initialize history
-
-    #     # Display chat history (text + images)
-    #     for chat in st.session_state["chat_history"]:
-    #         if chat["role"] == "user":
-    #             st.markdown(f"**You:** {chat['message']}")
-    #         elif chat["role"] == "assistant":
-    #             st.markdown(f"**Assistant:** {chat['message']}")
-    #         elif chat["role"] == "chart":
-    #             st.image(chat["message"])
-
-    #     # User input box
-    #     # user_input = st.text_input("Ask something about your dataset:")
-    #     user_input = st.text_input(
-    #         "Ask something about your dataset:",
-    #         key="chat_input"
-    #     )
-
-
-    #     if st.button("Send") and user_input.strip():
-    #         st.session_state["chat_history"].append({"role": "user", "message": user_input})
-
-    #         intent = detect_intent(user_input)
-
-    #         # ---- Intent handling ----
-    #         if intent == "describe":
-    #             response = f"This dataset has **{df.shape[0]} rows** and **{df.shape[1]} columns**."
-
-    #         elif intent == "columns":
-    #             response = "Here are the columns:\n\n" + "\n".join([f"- {col}" for col in df.columns])
-
-    #         elif intent == "missing":
-    #             response = "Missing values:\n\n" + df.isnull().sum().to_string()
-
-    #         elif intent == "stats":
-    #             response = "Basic statistics:\n\n" + df.describe().transpose().to_string()
-
-    #         elif intent == "chart":
-    #             detected_cols, chart_type = parse_chart_request(user_input, list(df.columns))
-
-    #             if len(detected_cols) == 0:
-    #                 response = "Please mention a valid column name for visualization."
-
-    #             elif len(detected_cols) == 1:
-    #                 img_path = generate_chart(df, detected_cols[0], chart_type=chart_type)
-    #                 st.session_state["chat_history"].append(
-    #                     {"role": "assistant", "message": f"📊 {chart_type.title()} Chart for **{detected_cols[0]}**"}
-    #                 )
-    #                 st.session_state["chat_history"].append(
-    #                     {"role": "chart", "message": img_path}
-    #                 )
-    #                 response = None
-
-    #             else:  # 2+ columns → scatter
-    #                 img_path = generate_chart(df, detected_cols[0], detected_cols[1], chart_type="scatter")
-    #                 st.session_state["chat_history"].append(
-    #                     {"role": "assistant", "message": f"📊 Scatter Plot: **{detected_cols[0]} vs {detected_cols[1]}**"}
-    #                 )
-    #                 st.session_state["chat_history"].append(
-    #                     {"role": "chart", "message": img_path}
-    #                 )
-    #                 response = None
-
-    #         else:
-    #             # LLM fallback - intelligent dataset-aware insights
-    #             llm = get_llm()
-
-    #             system_prompt = (
-    #                 "You are an intelligent EDA assistant. "
-    #                 "You help users analyze their dataset through natural conversation. "
-    #                 "Keep responses short and focused on the provided dataset."
-    #             )
-
-    #             dataset_info = (
-    #                 f"Dataset Columns: {list(df.columns)}\n"
-    #                 f"Number of rows: {df.shape[0]}\n"
-    #             )
-
-    #             chat_context = ""
-    #             for chat in st.session_state["chat_history"][-4:]:  # recent context only
-    #                 chat_context += f"{chat['role']}: {chat['message']}\n"
-
-    #             final_prompt = (
-    #                 f"{system_prompt}\n"
-    #                 f"Dataset Info:\n{dataset_info}\n"
-    #                 f"Conversation so far:\n{chat_context}\n"
-    #                 f"User Query:\n{user_input}"
-    #             )
-
-    #             llm_response = llm.invoke(final_prompt)
-    #             response = llm_response.content
-
-
-    #         # Only add text response if present
-    #         if response:
-    #             st.session_state["chat_history"].append({"role": "assistant", "message": response})
-
-    #         #st.stop()
-    #         st.session_state["chat_input"] = ""  # Clear text box
-    #         st.experimental_rerun()  # Or st.rerun()
-
-
-
-
-
-
-    # Tab 4: Export Report (placeholder)
-    # with tabs[3]:
-    #     st.subheader("Step 4: Export cleaned data & PDF report")
-    #     st.info("Export options will be implemented here soon.")
-    #     from src.pipeline.report_builder import generate_report_charts
-
-    #     if "cleaned_dataset" in st.session_state:
-    #         if st.button("Generate Test Charts"):
-    #             paths, captions = generate_report_charts(st.session_state["cleaned_dataset"])
-    #             st.write("Generated charts:")
-    #             st.write(paths)
-    #             st.write(captions)
-    #     else:
-    #         st.info("Upload & clean dataset first.")
-
+    # TAB 4 — Export Report
     with tabs[3]:
-        # Tab 4: Export Report
-        st.subheader("Step 4: Export cleaned data & PDF report")
+        st.subheader("Step 4: Export Report")
 
         if "cleaned_dataset" not in st.session_state:
-            st.warning("⚠️ No cleaned dataset found. Complete Step 2 first.")
+            st.warning("Upload & clean dataset first!")
             st.stop()
-
-        df = st.session_state["cleaned_dataset"]
 
         from src.agents.llm_client import get_llm
         from src.pipeline.pdf_report import generate_pdf_report
 
-        st.write("Click the button to generate your EDA report PDF:")
+        df = st.session_state["cleaned_dataset"]
+        st.write("Generate EDA Summary PDF")
 
-        if st.button("Generate & Download Report"):
-    
+        if st.button("Generate PDF Report"):
             llm = get_llm()
 
-            # Prepare dataset context for AI
-            dataset_details = f"""
-            Columns: {list(df.columns)}
-            Rows: {df.shape[0]}
-            Describe Stats:
-            {df.describe().to_string()}
-            Missing Values:
-            {df.isnull().sum().to_string()}
-            """
+            prompt = (
+                "Give 4–6 quick insights about the dataset:\n"
+                f"Columns: {list(df.columns)}\n"
+                f"Missing: {df.isnull().sum().to_dict()}\n"
+                f"Stats: {df.describe().to_string()}"
+            )
+            insights = llm.invoke(prompt).content
 
-            ai_insight_prompt = f"""
-            You are an EDA expert. Create 4-6 short bullet-point insights 
-            based ONLY on the dataset below:
+            pdf_path = generate_pdf_report(df, insights)
 
-            {dataset_details}
-
-            Be concise, analytical, and insightful.
-            Do not mention that the dataset was given or describe the process.
-            No introductions or disclaimers.
-            """
-
-            ai_response = llm.invoke(ai_insight_prompt).content
-
-            # Generate PDF using AI insights
-            pdf_path = generate_pdf_report(df, ai_response)
-
-            with open(pdf_path, "rb") as file:
+            with open(pdf_path, "rb") as f:
                 st.download_button(
-                    label="📥 Download PDF Report",
-                    data=file,
+                    label="📥 Download Report",
+                    data=f,
                     file_name="EDA_Report.pdf",
                     mime="application/pdf"
                 )
 
-            st.success("Report successfully generated! Download above.")
-
-
-        # if st.button("Generate & Download Report"):
-        #     llm = get_llm()
-        #     ai_insight_prompt = (
-        #         "Provide 4-6 short bullet point insights about this dataset "
-        #         "based only on the features and summary statistics."
-        #     )
-        #     ai_response = llm.invoke(ai_insight_prompt).content
-
-        #     pdf_path = generate_pdf_report(df, ai_response)
-
-        #     with open(pdf_path, "rb") as file:
-        #         st.download_button(
-        #             label="📥 Download PDF Report",
-        #             data=file,
-        #             file_name="EDA_Report.pdf",
-        #             mime="application/pdf"
-        #         )
-
-        #     st.success("Report successfully generated! Download above.")
-
-
-
+            st.success("Report ready!")

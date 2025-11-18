@@ -1,0 +1,64 @@
+# ------------------
+# Python
+# ------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.pkl
+
+# Virtual environments
+venv/
+.env/
+env/
+ENV/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# ------------------
+# Streamlit files
+# ------------------
+.streamlit/
+
+# ------------------
+# OS / Editor Files
+# ------------------
+.DS_Store
+Thumbs.db
+.vscode/
+*.log
+
+# ------------------
+# Build / Packaging
+# ------------------
+build/
+dist/
+*.egg-info/
+
+# ------------------
+# Reports & Generated Files
+# ------------------
+src/data/report_charts/
+src/data/cleaned/
+src/data/temp/
+
+# Exported PDFs
+*.pdf
+
+# ------------------
+# Credentials / Keys
+# ------------------
+*.env
+.env.*
+apikey.txt
+OPENROUTER_API_KEY
+NEWS_API_KEY
+EMAIL_PASS
+
+# ------------------
+# Cache / Model weights
+# ------------------
+.cache/
+models/

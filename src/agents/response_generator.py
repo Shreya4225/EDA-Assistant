@@ -6,6 +6,7 @@ from src.agents.nlp_intent_parser import detect_intent, parse_chart_request
 from src.tools.chart_generator import generate_chart
 import pandas as pd
 
+
 def handle_user_query(user_input: str):
     df = st.session_state.get("cleaned_dataset")
 

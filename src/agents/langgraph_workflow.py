@@ -9,6 +9,7 @@ memory = ChatMemory()
 class ChatState(dict):
     user_input: str
 
+
 def chatbot_node(state: ChatState):
     user_text = state["user_input"]
 
